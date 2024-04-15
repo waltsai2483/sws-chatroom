@@ -18,7 +18,7 @@ const AccountAvatar = ({username, defAvatarUrl, avatarImage, setAvatarImage, ...
         setAvatarImage(avatarInput.current!.files?.item(0) ?? null);
     }
 
-    return <Avatar className="w-12 h-12" onMouseEnter={() => setAvatarHover(true)}
+    return <Avatar className="w-12 h-12" {...props} onMouseEnter={() => setAvatarHover(true)}
                    onMouseLeave={() => setAvatarHover(false)} onClick={onAvatarClick} {...props}>
         <AvatarImage src={avatarImage === undefined ? defAvatarUrl : avatarUrl}></AvatarImage>
         <AvatarFallback>{username.toUpperCase()[0]}</AvatarFallback>

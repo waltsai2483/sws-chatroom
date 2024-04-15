@@ -5,7 +5,7 @@ import {getAuth, User} from "@firebase/auth";
 import {firebaseApp} from "@/firebase/config";
 import {useRouter} from "next/navigation";
 import {useEffect, useState} from "react";
-import {get as dbGet, getDatabase, ref as dbRef} from "@firebase/database";
+import {get as dbGet, getDatabase, onChildAdded, ref as dbRef} from "@firebase/database";
 import {QueryClient, QueryClientProvider, useQuery} from "react-query";
 import {Command, CommandInput, CommandSeparator} from "@/components/ui/command";
 import ThemeButton from "@/components/theme/theme-button";
@@ -22,9 +22,8 @@ const queryClient = new QueryClient();
 const LobbyState = () => {
     const router = useRouter();
     const [user, setUser] = useState<User | null>();
-    const [userDataUpdate, setUserDataUpdate] = useState(false);
     const {data: userData, isLoading, error} = useQuery<UserData | undefined>({
-        queryKey: ["user-auth", user, userDataUpdate],
+        queryKey: ["user-auth", user],
         queryFn: async (context) => {
             if (!user) {
                 return undefined;
@@ -36,7 +35,7 @@ const LobbyState = () => {
                 avatar: avatarUrl
             };
         },
-        refetchInterval: 500
+        refetchInterval: 60*1000
     });
 
     getAuth(firebaseApp).onAuthStateChanged(async (usr) => {
@@ -61,6 +60,7 @@ const LobbyState = () => {
             <span className="my-3 ml-1 text-lg">{error.toString()}</span>
         </div>
     }
+
     return <LobbyChatroom user={user} userData={userData} />
 }
 

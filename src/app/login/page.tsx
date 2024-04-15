@@ -16,12 +16,14 @@ import {
     UserCredential
 } from "@firebase/auth";
 import {PasswordInput} from "@/components/form/PasswordInput";
-import {getDatabase, ref as dbRef, set as dbSet} from "@firebase/database";
+import {getDatabase, ref as dbRef, set as dbSet, get as dbGet, push as dbPush} from "@firebase/database";
 import {getStorage, ref as stRef, uploadBytes, updateMetadata, getDownloadURL} from "@firebase/storage";
 import {useRouter} from "next/navigation";
 import AccountAvatar from "@/components/form/AccountAvatar";
 import {Dialog, DialogContent, DialogFooter} from "@/components/ui/dialog";
 import {Check, Loader2} from "lucide-react";
+import {string} from "prop-types";
+import {addUserToChatroom} from "../../../lib/lobby";
 
 const LoginPage: NextPage = () => {
     const [isSignup, setSignup] = useState(false);
@@ -30,6 +32,7 @@ const LoginPage: NextPage = () => {
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
     const [alert, setAlert] = useState({at: [""], message: ""});
+    const [joinedChatroom, setJoinedChatroom] = useState<string[]>([]);
     const [inLoginProcess, setInLoginProcess] = useState(false);
     const router = useRouter();
 
@@ -47,6 +50,11 @@ const LoginPage: NextPage = () => {
             avatar = await getDownloadURL(ref);
         }
         await dbSet(dbRef(database, `users/${credential.user.uid}`), {username: name, avatar: avatar});
+        const arrayRef = dbRef(database, `user-joined-chatrooms/${credential.user.uid}`);
+        const array = await dbGet(arrayRef);
+        if (!array.size) {
+            await addUserToChatroom(credential.user.uid, "global-chatroom");
+        }
     }
 
     const confirmButtonClick = async () => {
@@ -130,7 +138,7 @@ const LoginPage: NextPage = () => {
             await loginAndStoreDatas(credential, credential.user.providerData[0].photoURL, credential.user.displayName!);
             router.push("/lobby");
         }).catch((err) => console.log(err)
-        )
+        );
     }
 
     getAuth(firebaseApp).onAuthStateChanged((user) => {
