@@ -102,7 +102,8 @@ const LoginPage: NextPage = () => {
                     } else if (err.message.includes("auth/user-not-found")) {
                         setAlert({at: ["email"], message: "not found"});
                         setEmail("");
-                    } else if (err.message.includes("auth/invalid-credential")) {
+                    } else if (err.message.includes("auth/wrong-password")) {
+                        console.log("test");
                         setAlert({at: ["password"], message: "wrong"});
                         setPassword("");
                     }

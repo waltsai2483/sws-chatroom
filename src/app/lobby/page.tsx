@@ -1,16 +1,20 @@
 "use client";
 import {NextPage} from "next";
-import {Loader2, CircleX} from "lucide-react";
+import {Loader2, CircleX, MessageCircleMore} from "lucide-react";
 import {getAuth, User} from "@firebase/auth";
 import {firebaseApp} from "@/firebase/config";
 import {useRouter} from "next/navigation";
 import {useEffect, useState} from "react";
 import {get as dbGet, getDatabase, ref as dbRef} from "@firebase/database";
 import {QueryClient, QueryClientProvider, useQuery} from "react-query";
+import {Command, CommandInput, CommandSeparator} from "@/components/ui/command";
+import ThemeButton from "@/components/theme/theme-button";
+import {Separator} from "@/components/ui/separator";
+import LobbyChatroom from "@/app/lobby/LobbyChatroom";
 
-type UserData = {
+export type UserData = {
     username: string,
-    avatar: string | null
+    avatar: string
 }
 
 const queryClient = new QueryClient();
@@ -18,8 +22,9 @@ const queryClient = new QueryClient();
 const LobbyState = () => {
     const router = useRouter();
     const [user, setUser] = useState<User | null>();
+    const [userDataUpdate, setUserDataUpdate] = useState(false);
     const {data: userData, isLoading, error} = useQuery<UserData | undefined>({
-        queryKey: ["user-auth", user],
+        queryKey: ["user-auth", user, userDataUpdate],
         queryFn: async (context) => {
             if (!user) {
                 return undefined;
@@ -31,7 +36,7 @@ const LobbyState = () => {
                 avatar: avatarUrl
             };
         },
-        refetchInterval: 60 * 1000
+        refetchInterval: 500
     });
 
     getAuth(firebaseApp).onAuthStateChanged(async (usr) => {
@@ -44,7 +49,7 @@ const LobbyState = () => {
         }
     }, [router, user]);
 
-    if (userData === undefined || isLoading) {
+    if (!user || userData === undefined || isLoading) {
         return <div className="w-screen h-screen flex flex-col justify-center items-center">
             <Loader2 className="flex w-10 h-10 animate-spin"/>
             <span className="my-3 ml-2 text-lg">Loading...</span>
@@ -56,9 +61,7 @@ const LobbyState = () => {
             <span className="my-3 ml-1 text-lg">{error.toString()}</span>
         </div>
     }
-    return <main className="flex h-screen justify-center items-center">
-        {userData.avatar}
-    </main>
+    return <LobbyChatroom user={user} userData={userData} />
 }
 
 const LobbyPage: NextPage = () => {

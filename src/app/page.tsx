@@ -3,12 +3,7 @@ import {getAuth} from "@firebase/auth";
 import {firebaseApp} from "@/firebase/config";
 
 const Home = () => {
-    const user = getAuth(firebaseApp).currentUser;
-    if (user) {
-        redirect("/lobby");
-    } else {
-        redirect("/login");
-    }
+    redirect("/login");
     return <></>
 }
 

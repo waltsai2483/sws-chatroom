@@ -1,13 +1,13 @@
 "use client";
 import * as React from "react";
 
-import { cn } from "@/lib/utils";
+import {cn} from "@/lib/utils";
 import {EyeIcon, EyeOffIcon} from "lucide-react";
 
 export type InputProps = React.InputHTMLAttributes<HTMLInputElement>;
 
 const Input = React.forwardRef<HTMLInputElement, InputProps>(
-    ({ className, type, ...props }, ref) => {
+    ({className, type, ...props}, ref) => {
         const [showPassword, setShowPassword] = React.useState(false);
         const togglePasswordVisibility = () => setShowPassword(!showPassword);
 
@@ -41,4 +41,4 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
 );
 Input.displayName = "Input";
 
-export { Input as PasswordInput }
+export {Input as PasswordInput}
