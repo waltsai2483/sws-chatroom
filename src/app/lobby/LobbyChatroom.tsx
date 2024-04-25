@@ -12,12 +12,11 @@ import {
 } from "lucide-react";
 import ThemeButton from "@/components/theme/theme-button";
 import {
-    Command, CommandEmpty,
-    CommandInput, CommandItem,
+    Command, CommandEmpty
 } from "@/components/ui/command";
 import {User} from "firebase/auth";
 import {UserData} from "@/app/lobby/page";
-import {FC, useEffect, useRef, useState} from "react";
+import {FC, useCallback, useEffect, useRef, useState} from "react";
 import {useQueryClient} from "react-query";
 import {Avatar, AvatarFallback, AvatarImage} from "@/components/ui/avatar";
 import {Button} from "@/components/ui/button";
@@ -44,20 +43,20 @@ import {
     ref as dbRef,
     set as dbSet,
     get as dbGet,
+    remove as dbRemove,
     onValue,
-    onChildChanged
+    onChildChanged, onChildRemoved
 } from "@firebase/database";
-import {Textarea} from "@/components/ui/textarea";
 import Marquee from "react-fast-marquee";
 import {addUserToChatroom} from "../../../lib/lobby";
 import {Tabs, TabsContent, TabsList, TabsTrigger} from "@/components/ui/tabs";
 import {visit} from "yaml";
-import {cn, randomID} from "@/lib/utils";
+import {cn, randomID, sendNotification} from "@/lib/utils";
 import {Popover, PopoverContent, PopoverTrigger} from "@/components/ui/popover";
-import {CommandList} from "cmdk";
-import {PopoverClose} from "@radix-ui/react-popover";
 import NextImage from "next/image";
 import FriendSearcher from "@/app/lobby/FriendSearch";
+import {ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger} from "@/components/ui/context-menu";
+import {ChatroomSettings} from "@/app/lobby/ChatroomSettings";
 
 export enum MessageType {
     TEXT,
@@ -93,6 +92,7 @@ export type ChatroomData = {
 export type Message = {
     type: MessageType,
     data: string,
+    key: string,
     id: string,
     username?: string,
     userimg?: string,
@@ -116,13 +116,15 @@ const FileUplaod: FC<{
         hiddenInput.current!.click();
     }
 
-    return <Button variant="ghost" className="w-full h-8 flex flex-row justify-between items-center"
-                   onClick={buttonClick}>
+    return <div><Button variant="ghost" className="w-full h-8 flex flex-row justify-between items-center"
+                        onClick={buttonClick}>
         {icon}
         {text}
+    </Button>
         <input ref={hiddenInput} type="file" className="hidden" accept={extension}
                onChange={(input) => onFileChanged(input.target.files?.item(0) ?? undefined)}/>
-    </Button>;
+    </div>
+        ;
 }
 
 const ChatroomBox = ({className, img, title, description, onClick, open}: {
@@ -149,6 +151,35 @@ const ChatroomBox = ({className, img, title, description, onClick, open}: {
             </div> : ""
         }
     </div>
+}
+
+const MessageBox = ({message, selectedChatroom}: { message: Message, selectedChatroom: string }) => {
+    const unsendMessage = async () => {
+        await dbRemove(dbRef(getDatabase(firebaseApp), `chatrooms/${selectedChatroom}/messages/${message.key}`));
+    }
+
+    return <ContextMenu>
+        <ContextMenuTrigger>
+            <div className="text-sm hover:bg-gray-50 hover:dark:bg-gray-900">
+                {
+                    (message.type == MessageType.TEXT) ? message.data : message.type == MessageType.IMAGE ?
+                        <NextImage src={message.data} width={200} height={300}
+                                   className="w-1/5 h-auto" alt={message.data}/> :
+                        <video width="400" height="225" preload="none" controls>
+                            <source src={message.data} type={message.filetype}/>
+                            {message.data}
+                        </video>
+                }</div>
+        </ContextMenuTrigger>
+        <ContextMenuContent>
+            <ContextMenuItem inset onClick={() => navigator.clipboard.writeText(message.data)}>
+                Copy
+            </ContextMenuItem>
+            <ContextMenuItem inset onClick={unsendMessage}>
+                Unsend
+            </ContextMenuItem>
+        </ContextMenuContent>
+    </ContextMenu>
 }
 
 const UserBox = ({user, onClick}: { user: UserIDData, onClick: () => void }) => {
@@ -179,6 +210,7 @@ const LobbyChatroom = ({user, userData}: {
     const [username, setUsername] = useState<string>(userData.username);
 
     const [joinedChatroom, setJoinedChatroom] = useState<ChatroomData[]>([]);
+
     const [selectedChatroom, setSelectedChatroom] = useState<ChatroomData | null>(null);
     const [messages, setMessages] = useState<Message[]>([]);
     const [messageText, setMessageText] = useState("");
@@ -195,40 +227,82 @@ const LobbyChatroom = ({user, userData}: {
 
     const db = getDatabase(firebaseApp);
 
-    useEffect(() => {
-        const db = getDatabase(firebaseApp)
-        if (!searchText) {
-            setJoinedChatroom([]);
-            onChildAdded(dbRef(db, `user-joined-chatrooms/${user.uid}`), async (snapshot) => {
-                const roomID = snapshot.val();
-                const chatroom = await dbGet(dbRef(db, `chatrooms/${roomID}`));
-                const data = chatroom.val() as ChatroomData;
-                setJoinedChatroom((prev) => [...prev, data]);
-            });
-        } else {
-            onValue(dbRef(db, `chatrooms`), async (snapshot) => {
-                let chatrooms: ChatroomData[] = [];
-                if (searchText[0] == "@") {
-                    await friendSearch();
-                    setSearchedChatroom([]);
-                } else {
-                    snapshot.forEach((childSnapshot) => {
-                        const chatroom = childSnapshot.val() as ChatroomData;
-                        if (chatroom.visibility == ChatroomVisibility.PUBLIC) {
-                            if (searchText[0] == "#" && chatroom.id == searchText.substring(1) || searchText[0] != "#" && chatroom.title.toLowerCase().includes(searchText.toLowerCase())) {
-                                chatrooms.push(chatroom);
-                            }
-                        } else {
-                            if (searchText[0] == "#" && chatroom.id == searchText.substring(1)) {
-                                chatrooms.push(chatroom);
-                            }
-                        }
+    const requestNotificationPermission = useCallback(() => {
+        if ("Notification" in window) {
+            Notification.requestPermission().then((permission) => {
+                if (permission === "granted") {
+                    onValue(dbRef(db, `user-joined-chatrooms/${user.uid}`), (snapshot) => {
+                        snapshot.forEach((child) => {
+                            const chatroomid = child.val();
+                            dbGet(dbRef(db, `chatrooms/${chatroomid}`))
+                                .then((value) => {
+                                    const chatroom = value.val() as ChatroomData;
+                                    let guardInitRecall = true;
+                                    onChildAdded(dbRef(db, `chatrooms/${chatroomid}/messages`), (snapshot) => {
+                                        const message = snapshot.val() as Message;
+                                        if (!guardInitRecall && message.id != user.uid) {
+                                            sendNotification(message, chatroom);
+                                        }
+                                    });
+
+                                    onValue(dbRef(db, `chatrooms/${chatroomid}/messages`), (snapshot) => {
+                                        guardInitRecall = false;
+                                    });
+                                });
+
+                        });
                     });
-                    setSearchedUsers([]);
-                    setSearchedChatroom(chatrooms);
                 }
             });
         }
+    }, [db, user.uid]);
+
+    useEffect(() => {
+        if ("Notification" in window) {
+            requestNotificationPermission();
+        }
+    }, [requestNotificationPermission]);
+
+    useEffect(() => {
+        onChildAdded(dbRef(db, `user-joined-chatrooms/${user.uid}`), async (snapshot) => {
+            const roomID = snapshot.val();
+            const chatroom = await dbGet(dbRef(db, `chatrooms/${roomID}`));
+            const data = chatroom.val() as ChatroomData;
+            setJoinedChatroom((prev) => [...prev, data]);
+        });
+
+        onChildRemoved(dbRef(db, `user-joined-chatrooms/${user.uid}`), async (snapshot) => {
+            const roomID = snapshot.val();
+            const chatroom = await dbGet(dbRef(db, `chatrooms/${roomID}`));
+            const data = chatroom.val() as ChatroomData;
+            setJoinedChatroom((prev) => prev.filter((value) => value.id != snapshot.val()));
+        });
+    }, []);
+
+    useEffect(() => {
+        const db = getDatabase(firebaseApp)
+        onValue(dbRef(db, `chatrooms`), async (snapshot) => {
+            let chatrooms: ChatroomData[] = [];
+            if (searchText[0] == "@") {
+                await friendSearch();
+                setSearchedChatroom([]);
+            } else {
+                snapshot.forEach((childSnapshot) => {
+                    const chatroom = childSnapshot.val() as ChatroomData;
+                    if (chatroom.visibility == ChatroomVisibility.PUBLIC) {
+                        if (searchText[0] == "#" && chatroom.id == searchText.substring(1) || searchText[0] != "#" && chatroom.title.toLowerCase().includes(searchText.toLowerCase())) {
+                            chatrooms.push(chatroom);
+                        }
+                    } else {
+                        if (searchText[0] == "#" && chatroom.id == searchText.substring(1)) {
+                            chatrooms.push(chatroom);
+                        }
+                    }
+                });
+                setSearchedUsers([]);
+                setSearchedChatroom(chatrooms);
+            }
+        });
     }, [user, searchText]);
 
     useEffect(() => {
@@ -236,7 +310,11 @@ const LobbyChatroom = ({user, userData}: {
         if (!selectedChatroom) return;
         setMessages([]);
         onValue(dbRef(db, `chatrooms/${selectedChatroom.id}/messages`), (snapshot) => {
-            setMessages(snapshot.val());
+            const list: Message[] = [];
+            snapshot.forEach((snapshot) => {
+                list.push({...snapshot.val(), key: snapshot.key} as Message);
+            })
+            setMessages(list);
         });
     }, [selectedChatroom, selectedChatroom?.messages]);
 
@@ -296,25 +374,19 @@ const LobbyChatroom = ({user, userData}: {
 
     const openPrivateChatroomWith = async (id: string, friend: UserData) => {
         if (user.uid == id) return;
-        const db = getDatabase(firebaseApp);
-        const chatroom = await dbGet(dbRef(db, `chatrooms/friend-@${id}`));
-        if (chatroom.exists()) {
-            await handleEnterChatroom(chatroom.val() as ChatroomData);
-            return;
-        }
-        console.log(friend.avatar);
         const newRoom = {
-            id: `friend-@${id}`,
-            title: friend.username,
-            description: "Private chatroom for you and your friend!",
+            id: generateID("", ChatroomVisibility.PRIVATE),
+            title: `Chatroom with ${friend.username} and ${userData.username}`,
+            description: "",
             visibility: ChatroomVisibility.PRIVATE,
             image: friend.avatar,
             messages: [],
-            userData: [user.uid]
+            userData: []
         };
         await addNewChatroom(newRoom);
+        await addUserToChatroom(user.uid, newRoom.id);
+        await addUserToChatroom(id, newRoom.id);
         await handleEnterChatroom(newRoom);
-        await addUserToChatroom(id, `friend-@${id}`);
     }
 
     const handleEnterChatroom = async (chatroom: ChatroomData) => {
@@ -329,7 +401,7 @@ const LobbyChatroom = ({user, userData}: {
 
     const updateUserData = async () => {
         const db = getDatabase(firebaseApp)
-        let avatar: string | null = null;
+        let avatar: string | null = userData.avatar;
         if (avatarImage) {
             const ref = stRef(getStorage(firebaseApp), `users/${user.uid}`);
             await uploadBytes(ref, avatarImage);
@@ -338,7 +410,7 @@ const LobbyChatroom = ({user, userData}: {
         }
         await dbSet(dbRef(db, `users/${user.uid}`), {
             username: username,
-            avatar: avatarImage === undefined ? userData.avatar : avatar
+            avatar: avatar
         });
         await queryClient.invalidateQueries(["user-auth", user]);
     }
@@ -472,75 +544,68 @@ const LobbyChatroom = ({user, userData}: {
                         </div>
                     </Command>
                     <div className="flex flex-col w-full h-full" onClick={() => setSidebarOpen(false)}>
-                        <Dialog>
-                            <div
-                                className="h-16 flex flex-row justify-between items-center px-3 gap-2 border-b rounded-b-md shadow-sm">
-                                <div className="flex flex-row items-center gap-3">
-                                    <Avatar className="h-8 w-8">
-                                        <AvatarFallback>{selectedChatroom?.title[0].toUpperCase()}</AvatarFallback>
-                                        <AvatarImage src={selectedChatroom?.image}/>
-                                    </Avatar>
-                                    <div className="text-md font-semibold">{selectedChatroom?.title}</div>
-                                </div>
-                                <DialogTrigger>
-                                    {selectedChatroom &&
-                                        <Button variant="outline" className="h-10 w-10 p-0 items-center">
-                                            <UserPlus2 className="h-4 w-4"/>
-                                        </Button>
-                                    }
 
-                                </DialogTrigger>
+                        <div
+                            className="h-16 flex flex-row justify-between items-center px-3 gap-2 border-b rounded-b-md shadow-sm">
+                            <div className="flex flex-row items-center gap-3">
+                                <Avatar className="h-8 w-8">
+                                    <AvatarFallback>{selectedChatroom?.title[0].toUpperCase()}</AvatarFallback>
+                                    <AvatarImage src={selectedChatroom?.image}/>
+                                </Avatar>
+                                <div className="text-md font-semibold">{selectedChatroom?.title}</div>
                             </div>
-                            <DialogContent>
-                                <DialogHeader>
-                                    <DialogTitle>Add Friends</DialogTitle>
-                                    <DialogDescription>Add your friends to chat together!</DialogDescription>
-                                </DialogHeader>
-                                <DialogBody className="px-3">
-                                    <FriendSearcher chatroomId={selectedChatroom?.id!}/>
-                                </DialogBody>
-                                <DialogClose asChild>
-                                    <Button className="w-full">Close</Button>
-                                </DialogClose>
-                            </DialogContent>
-                        </Dialog>
+                            {
+                                selectedChatroom && <div className="flex flex-row items-center gap-2">
+                                    <Dialog>
+                                        <DialogTrigger name=""
+                                                       className="w-10 h-10 px-0 flex flex-row justify-center items-center border rounded-md hover:bg-gray-50 hover:dark:bg-gray-900">
+                                            <UserPlus2 className="h-4 w-4"/></DialogTrigger>
+                                        <DialogContent>
+                                            <DialogHeader>
+                                                <DialogTitle>Add Friends</DialogTitle>
+                                                <DialogDescription>Add your friends to chat together!</DialogDescription>
+                                            </DialogHeader>
+                                            <DialogBody className="px-3">
+                                                <FriendSearcher id={selectedChatroom?.id!}/>
+                                            </DialogBody>
+                                            <DialogClose asChild>
+                                                <Button className="w-full">Close</Button>
+                                            </DialogClose>
+                                        </DialogContent>
+                                    </Dialog>
+                                    {
+                                        <Dialog>
+                                            <DialogTrigger disabled={selectedChatroom.id === "global-chatroom"}
+                                                className={`w-10 h-10 px-0 flex flex-row justify-center items-center border rounded-md hover:bg-gray-50 hover:dark:bg-gray-900 ${selectedChatroom.id === "global-chatroom" ? "opacity-50" : ""}`}>
+                                                <Settings className="h-4 w-4"/>
+                                            </DialogTrigger>
+                                            <ChatroomSettings chatroom={selectedChatroom} />
+                                        </Dialog>
+                                    }
+                                </div>
+                            }
+                        </div>
+
                         <div className="h-full flex overflow-y-scroll flex-col-reverse p-4">
                             {
                                 messages && messages.toReversed().map((message, index) => {
                                     if (messages.toReversed()[index + 1]?.id == message.id) {
                                         return <div key={`${selectedChatroom?.id}-${index}`}
-                                                    className={`text-sm ml-[52px] ${messages.toReversed()[index + 2]?.id == message.id ? "mt-1" : ""}`}>
-                                            {
-                                                (message.type == MessageType.TEXT) ? message.data : message.type == MessageType.IMAGE ?
-                                                    <NextImage src={message.data} width={200} height={300}
-                                                               className="w-1/5 h-auto" alt={message.data}/> :
-                                                    <video width="400" height="225" preload="none" controls>
-                                                        <source src={message.data} type={message.filetype}/>
-                                                        {message.data}
-                                                    </video>
-                                            }
+                                                    className={`ml-[52px] ${messages.toReversed()[index + 2]?.id == message.id ? "pt-1" : ""}`}>
+                                            <MessageBox message={message} selectedChatroom={selectedChatroom!.id}/>
                                         </div>;
                                     }
-                                    return <div key={`${selectedChatroom?.id}-${index}`}
-                                                className={`flex flex-row items-start gap-3 mt-3`}>
-                                        <Avatar className="h-10 w-10">
-                                            <AvatarFallback>{selectedChatroom?.title[0].toUpperCase()}</AvatarFallback>
-                                            <AvatarImage src={userDataList?.get(message.id)?.avatar}/>
-                                        </Avatar>
-                                        <div className="flex flex-col relative -top-1">
+                                    return <div key={`${selectedChatroom?.id}-${index}`}>
+                                        <div className={`flex flex-row items-center gap-3`}>
+                                            <Avatar className="h-9 w-9 mx-0.5">
+                                                <AvatarFallback>{userDataList?.get(message.id)?.username}</AvatarFallback>
+                                                <AvatarImage src={userDataList?.get(message.id)?.avatar}/>
+                                            </Avatar>
                                             <span
                                                 className="text-md font-semibold text-gray-700 dark:text-gray-300">{userDataList?.get(message.id)?.username}</span>
-                                            <div className="text-sm">
-                                                {
-                                                    (message.type == MessageType.TEXT) ? message.data : message.type == MessageType.IMAGE ?
-                                                        <NextImage src={message.data} width={150} height={400}
-                                                                   className="w-1/5 h-auto" alt={message.data}/> :
-                                                        <video width="400" height="225" preload="none" controls>
-                                                            <source src={message.data} type={message.filetype}/>
-                                                            {message.data}
-                                                        </video>
-                                                }
-                                            </div>
+                                        </div>
+                                        <div className="ml-[52px] pb-1"><MessageBox message={message}
+                                                                                    selectedChatroom={selectedChatroom!.id}/>
                                         </div>
                                     </div>
                                 })
@@ -548,8 +613,9 @@ const LobbyChatroom = ({user, userData}: {
                         </div>
                         <div className="flex flex-row w-full h-20 px-2 gap-2 items-center">
                             <Popover>
-                                <PopoverTrigger><Button variant="outline" className="w-14 h-14 px-0"><Plus
-                                    className="w-8"/></Button></PopoverTrigger>
+                                <PopoverTrigger
+                                    className="w-[76px] h-14 px-0 flex flex-row justify-center items-center border rounded-md hover:bg-gray-50 hover:dark:bg-gray-900"><Plus
+                                    className="w-8"/></PopoverTrigger>
                                 <PopoverContent className="w-28 flex-col gap-1 p-1 py-2" side="top" sideOffset={8}>
                                     <FileUplaod extension="image/*" icon={<Image className="!w-4 !h-4"/>} text="Image"
                                                 onFileChanged={(file) => addFileMessage(MessageType.IMAGE, file)}/>

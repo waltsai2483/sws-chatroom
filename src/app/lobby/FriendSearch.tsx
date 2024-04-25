@@ -2,36 +2,46 @@ import {Input} from "@/components/ui/input";
 import {get as dbGet, getDatabase, onValue, ref as dbRef} from "@firebase/database";
 import {firebaseApp} from "@/firebase/config";
 import {UserData} from "@/app/lobby/page";
-import {User} from "firebase/auth";
-import {useState} from "react";
+import {useEffect, useState} from "react";
 import {Avatar, AvatarFallback, AvatarImage} from "@/components/ui/avatar";
-import Marquee from "react-fast-marquee";
 import {Button} from "@/components/ui/button";
 import {UserPlus2} from "lucide-react";
 import {addUserToChatroom} from "../../../lib/lobby";
-import {UserIDData} from "@/app/lobby/LobbyChatroom";
+import {ChatroomData, UserIDData} from "@/app/lobby/LobbyChatroom";
+import {Dialog, DialogContent} from "@/components/ui/dialog";
 
 
-
-const FriendSearcher = ({chatroomId}: {chatroomId: string}) => {
+const FriendSearcher = ({id}: { id: string }) => {
     const [searchedUsers, setSearchedUsers] = useState<UserIDData[]>([]);
+    const [userExist, setUserExists] = useState(false);
+    const [chatroom, setChatroom] = useState<ChatroomData>();
     const friendSearch = async (text: string) => {
         const db = getDatabase(firebaseApp);
+        const chatroom = (await dbGet(dbRef(db, `chatrooms/${id}`))).val() as ChatroomData;
         onValue(dbRef(db, `users`), async (snapshot) => {
             const list: UserIDData[] = [];
             snapshot.forEach((child) => {
                 const id = child.key;
-                const userdata: UserData = child.val();
-                if (text[0] == "@" && text.substring(1) == id || userdata.username.includes(text)) {
-                    list.push({
-                        id: id,
-                        data: userdata
-                    });
+                console.log(chatroom);
+                if (!chatroom.userData || !chatroom.userData.includes(id)) {
+                    const userdata: UserData = child.val();
+                    if (text[0] == "@" && text.substring(1) == id || userdata.username.includes(text)) {
+                        list.push({
+                            id: id,
+                            data: userdata
+                        });
+                    }
                 }
             })
             setSearchedUsers(list);
         });
+        setChatroom(chatroom);
     }
+
+    useEffect(() => {
+        friendSearch("");
+    }, []);
+
     return <div>
         <Input type="text" className="w-full" placeholder="Search username or userid..."
                onChange={(input) => friendSearch(input.target.value)}/>
@@ -46,12 +56,18 @@ const FriendSearcher = ({chatroomId}: {chatroomId: string}) => {
                         </Avatar>
                         <div className="flex flex-col">
                             <span className="text-md font-semibold">{user.data.username}</span>
-                            <span className="text-sm">{"@"+user.id}</span>
+                            <span className="text-sm">{"@" + user.id}</span>
                         </div>
                     </div>
-                    <Button variant="outline" className="h-10 w-10 p-0 items-center" onClick={() => addUserToChatroom(user.id, chatroomId)}>
-                        <UserPlus2 className="h-4 w-4"/>
-                    </Button>
+                    <Dialog open={userExist} onOpenChange={setUserExists}>
+                        <Button variant="outline" className="h-10 w-10 p-0 items-center"
+                                onClick={async () => chatroom && setUserExists(!await addUserToChatroom(user.id, chatroom.id))}>
+                            <UserPlus2 className="h-4 w-4"/>
+                        </Button>
+                        <DialogContent>
+                            User {user.data.username} have already joined in!
+                        </DialogContent>
+                    </Dialog>
                 </div>)
             }
         </div>
