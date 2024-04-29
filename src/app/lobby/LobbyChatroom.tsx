@@ -277,6 +277,13 @@ const LobbyChatroom = ({user, userData}: {
             const data = chatroom.val() as ChatroomData;
             setJoinedChatroom((prev) => prev.filter((value) => value.id != snapshot.val()));
         });
+
+        onChildChanged(dbRef(db, `chatrooms`),  (snapshot) => {
+            setJoinedChatroom((prev) => [...prev.filter((value) => value.id != snapshot.key), snapshot.val()]);
+            if (snapshot.key == selectedChatroom?.id) {
+                setSelectedChatroom(snapshot.val());
+            }
+        });
     }, []);
 
     useEffect(() => {
@@ -387,6 +394,7 @@ const LobbyChatroom = ({user, userData}: {
         await addUserToChatroom(user.uid, newRoom.id);
         await addUserToChatroom(id, newRoom.id);
         await handleEnterChatroom(newRoom);
+        setSearchText("");
     }
 
     const handleEnterChatroom = async (chatroom: ChatroomData) => {
@@ -579,7 +587,7 @@ const LobbyChatroom = ({user, userData}: {
                                                 className={`w-10 h-10 px-0 flex flex-row justify-center items-center border rounded-md hover:bg-gray-50 hover:dark:bg-gray-900 ${selectedChatroom.id === "global-chatroom" ? "opacity-50" : ""}`}>
                                                 <Settings className="h-4 w-4"/>
                                             </DialogTrigger>
-                                            <ChatroomSettings chatroom={selectedChatroom} />
+                                            <ChatroomSettings chatroom={selectedChatroom} resetSelection={() => setSelectedChatroom(null)} />
                                         </Dialog>
                                     }
                                 </div>

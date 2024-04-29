@@ -29,7 +29,7 @@ import {
 } from "@firebase/storage";
 import {Checkbox} from "@/components/ui/checkbox";
 
-export const ChatroomSettings = ({chatroom}: { chatroom: ChatroomData }) => {
+export const ChatroomSettings = ({chatroom, resetSelection}: { chatroom: ChatroomData, resetSelection: () => void }) => {
     const [chatroomImage, setChatroomImage] = useState<File | null | undefined>();
     const [chatroomTitle, setChatroomTitle] = useState("");
     const [chatroomDescription, setChatroomDescription] = useState("");
@@ -71,6 +71,7 @@ export const ChatroomSettings = ({chatroom}: { chatroom: ChatroomData }) => {
         } catch (err) {
         }
         await dbRemove(dbRef(db, `chatrooms/${chatroom.id}`));
+        resetSelection();
     }
 
     return <DialogContent>
