@@ -19,6 +19,7 @@ const queryClient = new QueryClient();
 const LobbyState = () => {
     const router = useRouter();
     const [user, setUser] = useState<User | null>();
+    const [loadingMessage, setLoadingMessage] = useState("");
     const {data: userData, isLoading: userLoading, error: userError} = useQuery<UserData | undefined>({
         queryKey: ["user-auth", user],
         queryFn: async () => {
@@ -50,7 +51,6 @@ const LobbyState = () => {
     });
 
 
-
     getAuth(firebaseApp).onAuthStateChanged(async (usr) => {
         setUser(usr);
     });
@@ -74,7 +74,14 @@ const LobbyState = () => {
         </div>
     }
 
-    return <LobbyChatroom user={user} userData={userData}/>
+    return <div>
+        <div className={`absolute top-[calc(50%-144px)] left-[calc(50%-120px)] z-10 w-60 h-72 bg-gray-900 shadow-md rounded-md border flex flex-col justify-end ${loadingMessage.length > 0 ? "visible" : "invisible"}`}>
+            <Loader2 className="absolute w-14 h-14 left-[86px] top-24 animate-spin"/>
+            <div className="flex flex-row w-full justify-center my-8 font-semibold opacity-90">{loadingMessage}</div>
+        </div>
+        <div className={loadingMessage.length > 0 ? "blur-sm pointer-events-none cursor-none" : ""}><LobbyChatroom user={user} userData={userData} setLoading={setLoadingMessage}/>
+        </div>
+    </div>
 }
 
 const LobbyPage: NextPage = () => {

@@ -45,7 +45,7 @@ import {
     get as dbGet,
     remove as dbRemove,
     onValue,
-    onChildChanged, onChildRemoved
+    onChildChanged, onChildRemoved, DataSnapshot
 } from "@firebase/database";
 import Marquee from "react-fast-marquee";
 import {addUserToChatroom} from "../../../lib/lobby";
@@ -153,7 +153,7 @@ const ChatroomBox = ({className, img, title, description, onClick, open}: {
     </div>
 }
 
-const MessageBox = ({message, selectedChatroom}: { message: Message, selectedChatroom: string }) => {
+const MessageBox = ({user, message, selectedChatroom}: { user: string, message: Message, selectedChatroom: string }) => {
     const unsendMessage = async () => {
         await dbRemove(dbRef(getDatabase(firebaseApp), `chatrooms/${selectedChatroom}/messages/${message.key}`));
     }
@@ -175,9 +175,11 @@ const MessageBox = ({message, selectedChatroom}: { message: Message, selectedCha
             <ContextMenuItem inset onClick={() => navigator.clipboard.writeText(message.data)}>
                 Copy
             </ContextMenuItem>
-            <ContextMenuItem inset onClick={unsendMessage}>
-                Unsend
-            </ContextMenuItem>
+            {
+                message.id == user && <ContextMenuItem inset onClick={unsendMessage}>
+                    Unsend
+                </ContextMenuItem>
+            }
         </ContextMenuContent>
     </ContextMenu>
 }
@@ -197,9 +199,10 @@ const UserBox = ({user, onClick}: { user: UserIDData, onClick: () => void }) => 
     </div>
 }
 
-const LobbyChatroom = ({user, userData}: {
+const LobbyChatroom = ({user, userData, setLoading}: {
     user: User,
-    userData: UserData
+    userData: UserData,
+    setLoading: (arg: string) => void
 }) => {
     const [isSettingsOpen, setOpenSettings] = useState(false);
     const [isNewChatroomOpen, setOpenNewChatroom] = useState(false);
@@ -257,6 +260,12 @@ const LobbyChatroom = ({user, userData}: {
         }
     }, [db, user.uid]);
 
+    const updateSelectedChatroom = useCallback((snapshot: DataSnapshot) => {
+        if (snapshot.key == selectedChatroom?.id) {
+            setSelectedChatroom(snapshot.val());
+        }
+    }, [selectedChatroom]);
+
     useEffect(() => {
         if ("Notification" in window) {
             requestNotificationPermission();
@@ -277,14 +286,14 @@ const LobbyChatroom = ({user, userData}: {
             const data = chatroom.val() as ChatroomData;
             setJoinedChatroom((prev) => prev.filter((value) => value.id != snapshot.val()));
         });
-
-        onChildChanged(dbRef(db, `chatrooms`),  (snapshot) => {
-            setJoinedChatroom((prev) => [...prev.filter((value) => value.id != snapshot.key), snapshot.val()]);
-            if (snapshot.key == selectedChatroom?.id) {
-                setSelectedChatroom(snapshot.val());
-            }
-        });
     }, []);
+
+    useEffect(() => {
+        onChildChanged(dbRef(db, `chatrooms`), (snapshot) => {
+            setJoinedChatroom((prev) => [...prev.filter((value) => value.id != snapshot.key), snapshot.val()]);
+            updateSelectedChatroom(snapshot);
+        }, {onlyOnce: true});
+    }, [db, updateSelectedChatroom]);
 
     useEffect(() => {
         const db = getDatabase(firebaseApp)
@@ -390,11 +399,13 @@ const LobbyChatroom = ({user, userData}: {
             messages: [],
             userData: []
         };
+        setSearchText("");
+        setLoading("Creating private room...");
         await addNewChatroom(newRoom);
         await addUserToChatroom(user.uid, newRoom.id);
         await addUserToChatroom(id, newRoom.id);
         await handleEnterChatroom(newRoom);
-        setSearchText("");
+        setLoading("");
     }
 
     const handleEnterChatroom = async (chatroom: ChatroomData) => {
@@ -410,6 +421,7 @@ const LobbyChatroom = ({user, userData}: {
     const updateUserData = async () => {
         const db = getDatabase(firebaseApp)
         let avatar: string | null = userData.avatar;
+        setLoading("Updating user data...");
         if (avatarImage) {
             const ref = stRef(getStorage(firebaseApp), `users/${user.uid}`);
             await uploadBytes(ref, avatarImage);
@@ -421,6 +433,7 @@ const LobbyChatroom = ({user, userData}: {
             avatar: avatar
         });
         await queryClient.invalidateQueries(["user-auth", user]);
+        setLoading("");
     }
 
     const addNewChatroom = async (chatroomData: ChatroomData) => {
@@ -584,10 +597,11 @@ const LobbyChatroom = ({user, userData}: {
                                     {
                                         <Dialog>
                                             <DialogTrigger disabled={selectedChatroom.id === "global-chatroom"}
-                                                className={`w-10 h-10 px-0 flex flex-row justify-center items-center border rounded-md hover:bg-gray-50 hover:dark:bg-gray-900 ${selectedChatroom.id === "global-chatroom" ? "opacity-50" : ""}`}>
+                                                           className={`w-10 h-10 px-0 flex flex-row justify-center items-center border rounded-md hover:bg-gray-50 hover:dark:bg-gray-900 ${selectedChatroom.id === "global-chatroom" ? "opacity-50" : ""}`}>
                                                 <Settings className="h-4 w-4"/>
                                             </DialogTrigger>
-                                            <ChatroomSettings chatroom={selectedChatroom} resetSelection={() => setSelectedChatroom(null)} />
+                                            <ChatroomSettings chatroom={selectedChatroom}
+                                                              resetSelection={() => setSelectedChatroom(null)}/>
                                         </Dialog>
                                     }
                                 </div>
@@ -600,7 +614,7 @@ const LobbyChatroom = ({user, userData}: {
                                     if (messages.toReversed()[index + 1]?.id == message.id) {
                                         return <div key={`${selectedChatroom?.id}-${index}`}
                                                     className={`ml-[52px] ${messages.toReversed()[index + 2]?.id == message.id ? "pt-1" : ""}`}>
-                                            <MessageBox message={message} selectedChatroom={selectedChatroom!.id}/>
+                                            <MessageBox user={user.uid} message={message} selectedChatroom={selectedChatroom!.id}/>
                                         </div>;
                                     }
                                     return <div key={`${selectedChatroom?.id}-${index}`}>
@@ -612,7 +626,7 @@ const LobbyChatroom = ({user, userData}: {
                                             <span
                                                 className="text-md font-semibold text-gray-700 dark:text-gray-300">{userDataList?.get(message.id)?.username}</span>
                                         </div>
-                                        <div className="ml-[52px] pb-1"><MessageBox message={message}
+                                        <div className="ml-[52px] pb-1"><MessageBox user={user.uid} message={message}
                                                                                     selectedChatroom={selectedChatroom!.id}/>
                                         </div>
                                     </div>
