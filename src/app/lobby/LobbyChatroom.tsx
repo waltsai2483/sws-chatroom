@@ -409,6 +409,7 @@ const LobbyChatroom = ({user, userData, setLoading}: {
     }
 
     const handleEnterChatroom = async (chatroom: ChatroomData) => {
+        setLoading("Enter chatroom...");
         setSelectedChatroom(chatroom);
         const ref = dbRef(getDatabase(firebaseApp), `user-joined-chatrooms/${user.uid}`);
         const snapshot = await dbGet(ref);
@@ -416,6 +417,7 @@ const LobbyChatroom = ({user, userData, setLoading}: {
         if (!chatrooms || !chatrooms.includes(chatroom.id)) {
             await addUserToChatroom(user.uid, chatroom.id);
         }
+        setLoading("");
     }
 
     const updateUserData = async () => {
