@@ -74,7 +74,7 @@ export const ChatroomSettings = ({chatroom, resetChatroom, setLoading}: { chatro
         } catch (err) {
         }
         await dbRemove(dbRef(db, `chatrooms/${chatroom.id}`));
-        resetChatroom();
+        //resetChatroom();
         setLoading("");
     }
 
