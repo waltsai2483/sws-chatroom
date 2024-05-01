@@ -153,7 +153,11 @@ const ChatroomBox = ({className, img, title, description, onClick, open}: {
     </div>
 }
 
-const MessageBox = ({user, message, selectedChatroom}: { user: string, message: Message, selectedChatroom: string }) => {
+const MessageBox = ({user, message, selectedChatroom}: {
+    user: string,
+    message: Message,
+    selectedChatroom: string
+}) => {
     const unsendMessage = async () => {
         await dbRemove(dbRef(getDatabase(firebaseApp), `chatrooms/${selectedChatroom}/messages/${message.key}`));
     }
@@ -278,22 +282,30 @@ const LobbyChatroom = ({user, userData, setLoading}: {
             const chatroom = await dbGet(dbRef(db, `chatrooms/${roomID}`));
             const data = chatroom.val() as ChatroomData;
             setJoinedChatroom((prev) => [...prev, data]);
-        });
-
-        onChildRemoved(dbRef(db, `user-joined-chatrooms/${user.uid}`), async (snapshot) => {
-            const roomID = snapshot.val();
-            const chatroom = await dbGet(dbRef(db, `chatrooms/${roomID}`));
-            const data = chatroom.val() as ChatroomData;
-            setJoinedChatroom((prev) => prev.filter((value) => value.id != snapshot.val()));
+            console.log("added");
         });
     }, []);
 
     useEffect(() => {
-        onChildChanged(dbRef(db, `chatrooms`), (snapshot) => {
+        onChildRemoved(dbRef(db, `user-joined-chatrooms/${user.uid}`),  (snapshot) => {
+            const roomID = snapshot.val();
+            setJoinedChatroom((prev) => prev.filter((value) => value.id != snapshot.val()));
+            setMessages([]);
+            setSelectedChatroom(null);
+            console.log("removed");
+        });
+    }, []);
+
+    useEffect(() => {
+        onChildChanged(dbRef(db, `chatrooms`), async (snapshot) => {
+            let isJoined = false;
+            (await dbGet(dbRef(db, `user-joined-chatrooms/${user.uid}`))).forEach((child) => isJoined = isJoined || child.val() == snapshot.key);
+            if (!isJoined) return;
             setJoinedChatroom((prev) => [...prev.filter((value) => value.id != snapshot.key), snapshot.val()]);
             updateSelectedChatroom(snapshot);
+            console.log("changed");
         }, {onlyOnce: true});
-    }, [db, updateSelectedChatroom]);
+    }, [updateSelectedChatroom]);
 
     useEffect(() => {
         const db = getDatabase(firebaseApp)
@@ -456,7 +468,7 @@ const LobbyChatroom = ({user, userData, setLoading}: {
         setSendingMessage(true);
         const database = getDatabase(firebaseApp)
         const currentState = (await dbGet(dbRef(database, `chatrooms/${selectedChatroom.id}`))).val() as ChatroomData;
-        const messageIdx = (await dbGet(dbRef(database, `chatrooms/${currentState.id}/messages`))).size;
+        const messageIdx = parseInt((await dbGet(dbRef(database, `chatrooms/${currentState.id}/messageCounter`))).val() ?? "0");
         await dbSet(dbRef(database, `chatrooms/${currentState.id}/messages/${messageIdx}`), {
             type: MessageType.TEXT,
             id: user.uid,
@@ -464,6 +476,7 @@ const LobbyChatroom = ({user, userData, setLoading}: {
             date: new Date().toISOString(),
             data: messageText,
         });
+        await dbSet(dbRef(database, `chatrooms/${currentState.id}/messageCounter`), messageIdx + 1);
         setSelectedChatroom(currentState);
         setMessageText("");
         setSendingMessage(false);
@@ -567,7 +580,6 @@ const LobbyChatroom = ({user, userData, setLoading}: {
                         </div>
                     </Command>
                     <div className="flex flex-col w-full h-full" onClick={() => setSidebarOpen(false)}>
-
                         <div
                             className="h-16 flex flex-row justify-between items-center px-3 gap-2 border-b rounded-b-md shadow-sm">
                             <div className="flex flex-row items-center gap-3">
@@ -602,8 +614,7 @@ const LobbyChatroom = ({user, userData, setLoading}: {
                                                            className={`w-10 h-10 px-0 flex flex-row justify-center items-center border rounded-md hover:bg-gray-50 hover:dark:bg-gray-900 ${selectedChatroom.id === "global-chatroom" ? "opacity-50" : ""}`}>
                                                 <Settings className="h-4 w-4"/>
                                             </DialogTrigger>
-                                            <ChatroomSettings chatroom={selectedChatroom}
-                                                              resetSelection={() => setSelectedChatroom(null)}/>
+                                            <ChatroomSettings chatroom={selectedChatroom} resetChatroom={() => setSelectedChatroom(null)} setLoading={setLoading}/>
                                         </Dialog>
                                     }
                                 </div>
@@ -616,13 +627,14 @@ const LobbyChatroom = ({user, userData, setLoading}: {
                                     if (messages.toReversed()[index + 1]?.id == message.id) {
                                         return <div key={`${selectedChatroom?.id}-${index}`}
                                                     className={`ml-[52px] ${messages.toReversed()[index + 2]?.id == message.id ? "pt-1" : ""}`}>
-                                            <MessageBox user={user.uid} message={message} selectedChatroom={selectedChatroom!.id}/>
+                                            <MessageBox user={user.uid} message={message}
+                                                        selectedChatroom={selectedChatroom!.id}/>
                                         </div>;
                                     }
                                     return <div key={`${selectedChatroom?.id}-${index}`}>
                                         <div className={`flex flex-row items-center gap-3`}>
                                             <Avatar className="h-9 w-9 mx-0.5">
-                                                <AvatarFallback>{userDataList?.get(message.id)?.username}</AvatarFallback>
+                                                <AvatarFallback>{userDataList?.get(message.id)?.username[0].toUpperCase()}</AvatarFallback>
                                                 <AvatarImage src={userDataList?.get(message.id)?.avatar}/>
                                             </Avatar>
                                             <span

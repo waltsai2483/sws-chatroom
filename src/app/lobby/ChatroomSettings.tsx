@@ -29,7 +29,7 @@ import {
 } from "@firebase/storage";
 import {Checkbox} from "@/components/ui/checkbox";
 
-export const ChatroomSettings = ({chatroom, resetSelection}: { chatroom: ChatroomData, resetSelection: () => void }) => {
+export const ChatroomSettings = ({chatroom, resetChatroom, setLoading}: { chatroom: ChatroomData, resetChatroom: () => void, setLoading: (arg: string) => void }) => {
     const [chatroomImage, setChatroomImage] = useState<File | null | undefined>();
     const [chatroomTitle, setChatroomTitle] = useState("");
     const [chatroomDescription, setChatroomDescription] = useState("");
@@ -42,6 +42,7 @@ export const ChatroomSettings = ({chatroom, resetSelection}: { chatroom: Chatroo
 
     const updateChatroomData = async () => {
         let image: string | null = chatroom.image;
+        setLoading("Updating chatroom...");
         if (chatroomImage) {
             const ref = stRef(getStorage(firebaseApp), `chatrooms/${chatroom.id}/icon`);
             await uploadBytes(ref, chatroomImage);
@@ -54,10 +55,12 @@ export const ChatroomSettings = ({chatroom, resetSelection}: { chatroom: Chatroo
             description: chatroomDescription,
             image: image
         } as ChatroomData);
+        setLoading("");
     }
 
     const deleteChatroom = async () => {
         const db = getDatabase(firebaseApp);
+        setLoading("Deleting chatroom...");
         const joinedUsers = await dbGet(dbRef(db, "user-joined-chatrooms"));
         joinedUsers.forEach((child) => {
             child.forEach((joinedId) => {
@@ -71,7 +74,8 @@ export const ChatroomSettings = ({chatroom, resetSelection}: { chatroom: Chatroo
         } catch (err) {
         }
         await dbRemove(dbRef(db, `chatrooms/${chatroom.id}`));
-        resetSelection();
+        resetChatroom();
+        setLoading("");
     }
 
     return <DialogContent>
