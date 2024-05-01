@@ -727,7 +727,7 @@ const LobbyChatroom = ({user, userData, setLoading}: {
                         </TabsList>
                         <TabsContent value={ChatroomVisibility.PUBLIC} className="text-sm px-2">Anyone can join your
                             chatroom by <strong>searching
-                                the name of chatroom.</strong> You can choose to block them though.</TabsContent>
+                                the name of chatroom.</strong></TabsContent>
                         <TabsContent value={ChatroomVisibility.PRIVATE} className="text-sm px-2">Your ID will be
                             randomly given, only users who knows your ID can join your chatroom.</TabsContent>
                     </Tabs>
