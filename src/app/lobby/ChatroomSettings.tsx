@@ -28,8 +28,9 @@ import {
     uploadBytes
 } from "@firebase/storage";
 import {Checkbox} from "@/components/ui/checkbox";
+import {User} from "firebase/auth";
 
-export const ChatroomSettings = ({chatroom, resetChatroom, setLoading}: { chatroom: ChatroomData, resetChatroom: () => void, setLoading: (arg: string) => void }) => {
+export const ChatroomSettings = ({chatroom, setLoading}: { chatroom: ChatroomData, setLoading: (arg: string) => void }) => {
     const [chatroomImage, setChatroomImage] = useState<File | null | undefined>();
     const [chatroomTitle, setChatroomTitle] = useState("");
     const [chatroomDescription, setChatroomDescription] = useState("");
@@ -74,7 +75,6 @@ export const ChatroomSettings = ({chatroom, resetChatroom, setLoading}: { chatro
         } catch (err) {
         }
         await dbRemove(dbRef(db, `chatrooms/${chatroom.id}`));
-        //resetChatroom();
         setLoading("");
     }
 
@@ -95,7 +95,7 @@ export const ChatroomSettings = ({chatroom, resetChatroom, setLoading}: { chatro
             <Checkbox id="delete-chatroom" onCheckedChange={(checked) => setDeleteChatroomChecked(checked == true)}/>
             <label htmlFor="delete-chatroom"
                    className="text-sm font-medium leading-2 peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
-                I understand the consequence of deleting a chatroom permanently.
+                I would like to delete this chatroom permanently.
             </label>
         </div>
         <DialogClose asChild>

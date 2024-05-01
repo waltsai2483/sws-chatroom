@@ -73,6 +73,7 @@ export const EMPTY_CHATROOM = {
     visibility: ChatroomVisibility.PUBLIC,
     id: "",
     title: "",
+    owner: "",
     description: "",
     image: "",
     messages: [],
@@ -82,6 +83,7 @@ export const EMPTY_CHATROOM = {
 export type ChatroomData = {
     id: string,
     visibility: ChatroomVisibility,
+    owner: string,
     title: string,
     description: string,
     image: string,
@@ -287,7 +289,7 @@ const LobbyChatroom = ({user, userData, setLoading}: {
     }, []);
 
     useEffect(() => {
-        onChildRemoved(dbRef(db, `user-joined-chatrooms/${user.uid}`),  (snapshot) => {
+        onChildRemoved(dbRef(db, `user-joined-chatrooms/${user.uid}`), (snapshot) => {
             const roomID = snapshot.val();
             setJoinedChatroom((prev) => prev.filter((value) => value.id != snapshot.val()));
             setMessages([]);
@@ -405,6 +407,7 @@ const LobbyChatroom = ({user, userData, setLoading}: {
         const newRoom = {
             id: generateID("", ChatroomVisibility.PRIVATE),
             title: `Chatroom with ${friend.username} and ${userData.username}`,
+            owner: user.uid,
             description: "",
             visibility: ChatroomVisibility.PRIVATE,
             image: friend.avatar,
@@ -610,11 +613,12 @@ const LobbyChatroom = ({user, userData, setLoading}: {
                                     </Dialog>
                                     {
                                         <Dialog>
-                                            <DialogTrigger disabled={selectedChatroom.id === "global-chatroom"}
-                                                           className={`w-10 h-10 px-0 flex flex-row justify-center items-center border rounded-md hover:bg-gray-50 hover:dark:bg-gray-900 ${selectedChatroom.id === "global-chatroom" ? "opacity-50" : ""}`}>
+                                            <DialogTrigger disabled={selectedChatroom.owner != user.uid}
+                                                           className={`w-10 h-10 px-0 flex flex-row justify-center items-center border rounded-md hover:bg-gray-50 hover:dark:bg-gray-900 ${selectedChatroom.owner != user.uid ? "opacity-50" : ""}`}>
                                                 <Settings className="h-4 w-4"/>
                                             </DialogTrigger>
-                                            <ChatroomSettings chatroom={selectedChatroom} resetChatroom={() => setSelectedChatroom(null)} setLoading={setLoading}/>
+                                            <ChatroomSettings chatroom={selectedChatroom}
+                                                              setLoading={setLoading}/>
                                         </Dialog>
                                     }
                                 </div>
@@ -730,7 +734,7 @@ const LobbyChatroom = ({user, userData, setLoading}: {
                 </DialogBody>
                 <DialogClose asChild>
                     <Button className="w-full" disabled={!chatroomData.title}
-                            onClick={() => addNewChatroom(chatroomData)}>Add
+                            onClick={() => addNewChatroom({...chatroomData, owner: user.uid})}>Add
                         Chatroom</Button>
                 </DialogClose>
             </DialogContent>
